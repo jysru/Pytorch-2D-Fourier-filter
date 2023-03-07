@@ -2,6 +2,9 @@ import numpy as np
 import torch
 
 
+
+
+
 def numpy_fourier_lowpass_filter(x0, filter_radius):
     # Pad with input shape to ensure Nyquist
     x0_pad = np.pad(x0, pad_width=[int(x0.shape[0]/2), int(x0.shape[1]/2)], mode='constant')
@@ -18,6 +21,29 @@ def numpy_fourier_lowpass_filter(x0, filter_radius):
     R = R / np.max(R)
     mask = (R > filter_radius)
 
+    xf[mask] = 0
+
+    # Fourier transform back
+    xfi = np.fft.ifft2(np.fft.ifftshift(xf))
+
+    # Delete padding
+    row_diff = xfi.shape[0] - x0.shape[0]
+    col_diff = xfi.shape[1] - x0.shape[1]
+    xfi = xfi[row_diff//2:-row_diff//2, col_diff//2:-col_diff//2]
+
+    return (xfi, xf)
+
+
+def numpy_NA_filter(x0, NA, wavelength, step):
+    # Pad with input shape to ensure Nyquist
+    x0_pad = np.pad(x0, pad_width=[int(x0.shape[0]/2), int(x0.shape[1]/2)], mode='constant')
+    xf = np.fft.fftshift(np.fft.fft2(x0_pad))
+
+    freqs = np.fft.fftshift(np.fft.fftfreq(x0_pad.shape[0], step))
+    Xf, Yf = np.meshgrid(freqs, freqs)
+    Xf, Yf = Xf*wavelength, Yf*wavelength
+    Rf = np.sqrt(np.square(Xf) + np.square(Yf))
+    mask = (Rf > NA)
     xf[mask] = 0
 
     # Fourier transform back
@@ -66,3 +92,37 @@ def torch_fourier_lowpass_filter(x0, filter_radius):
     xfi = xfi[row_diff//2:-row_diff//2, col_diff//2:-col_diff//2]
 
     return (xfi, xf)
+
+
+
+def torch_NA_filter(x0, NA, wavelength, step):
+
+    # Convert to tensor
+    if isinstance(x0, np.ndarray):
+        x1 = torch.from_numpy(x0.astype('float32'))
+        x1 = torch.polar(x1, torch.zeros_like(x1))
+
+    # Pad with input shape to ensure Nyquist
+    pad = (int(x1.size()[0]/2), int(x1.size()[0]/2), int(x1.size()[1]/2), int(x1.size()[1]/2))
+    x2 = torch.nn.functional.pad(x1, pad=pad , mode='constant', value=0)
+
+    # Apply Fourier transform
+    xf = torch.fft.fftshift(torch.fft.fft2(x2))
+
+    freqs = np.fft.fftshift(np.fft.fftfreq(x2.shape[0], step))
+    Xf, Yf = np.meshgrid(freqs, freqs)
+    Xf, Yf = Xf*wavelength, Yf*wavelength
+    Rf = np.sqrt(np.square(Xf) + np.square(Yf))
+    mask = (Rf > NA)
+    xf[mask] = 0
+
+    # Fourier transform back
+    xfi = np.fft.ifft2(np.fft.ifftshift(xf))
+
+    # Delete padding
+    row_diff = xfi.shape[0] - x0.shape[0]
+    col_diff = xfi.shape[1] - x0.shape[1]
+    xfi = xfi[row_diff//2:-row_diff//2, col_diff//2:-col_diff//2]
+
+    return (xfi, xf)
+
